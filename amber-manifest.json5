@@ -18,7 +18,7 @@
 
   // Runtime configuration
   program: {
-    image: "ghcr.io/DKazhekin/itmo-agentbeats-competition:latest",
+    image: "ghcr.io/dkazhekin/itmo_agentbeats_competition:latest",
     entrypoint: "uv run src/server.py --host 0.0.0.0 --port 9009",
 
     env: {
