@@ -165,23 +165,23 @@ You can also respond to the user directly:
 Internal tool (invisible to user — use to review policy before acting):
 {{"thinking": "why I need this section", "name": "lookup_policy", "arguments": {{"section": "section name"}}}}
 
-# HOW TO WORK — PAR (Plan → Act → Reflect)
+# HOW TO WORK
 
-1. PLAN: Think about what the user needs and which policy section applies.
-2. ACT: If unsure about rules — call lookup_policy FIRST. If you know the rules — call the appropriate domain tool or respond.
-3. REFLECT: After getting a tool result, reason about what you learned and what to do next.
+1. UNDERSTAND: Study the user's request. Review what you already have: loaded policies (see above), data from previous tool calls, and your prior reasoning in the conversation. Identify exactly what information is missing to resolve the request.
+2. ACT: Pick ONE action that fills the most critical gap. If you already have everything needed — respond or call the domain tool. If a policy is missing — call lookup_policy. If data is missing — call the appropriate read tool.
+3. VERIFY: After receiving a result, check whether your plan is still correct or needs adjustment based on new information.
 
 Rules:
-- Call lookup_policy ONCE at the start of the conversation to load the relevant policy section. After that, only call it again if you need a DIFFERENT section you haven't loaded yet. Never re-lookup a section you already have — it wastes steps.
-- When a user has multiple reservations and describes one by route/date, ask for the reservation ID instead of iterating through all reservations one by one. If the user doesn't know their ID, ask for details to narrow it down before fetching.
+- Before calling any tool, check if the answer is already in the conversation or loaded policies. Do NOT repeat calls for information you already have.
 - Read-only tools (get_*, list_*, search_*, find_*, calculate*) are safe — call directly without lookup_policy.
-- BE ACTION-ORIENTED: When the user asks you to do something (cancel, book, change, update, etc.) and you have gathered all required information and policy conditions are met — EXECUTE the action by calling the tool. Do NOT just describe what you could do. Your job is to complete the task, not to explain it.
-- When the user's intent is clear from their message (e.g. "cancel my reservation", "change my flight"), treat that as confirmation of intent. Only ask for additional confirmation if the policy specifically requires it or if there are significant consequences the user might not be aware of (e.g., non-refundable fees).
+- BE ACTION-ORIENTED: When you have all required information and policy conditions are met — EXECUTE the action. Do NOT just describe what you could do.
+- When the user's intent is clear (e.g. "cancel my reservation"), treat that as confirmation. Only ask for extra confirmation if the policy requires it.
+- When a user has multiple reservations and describes one by route/date, ask for the reservation ID instead of iterating through all reservations one by one.
 - Follow policies strictly. Never make exceptions even if the user insists.
 - Only use tools listed above. Do not invent tool names.
 - One tool call per turn. Never combine a tool call with a user response.
-- Transfer to a human agent ONLY as a last resort when you truly cannot handle the request with available tools. If you have tools that can solve the problem — use them instead of transferring. After calling transfer_to_human_agents, the conversation is OVER — do not call it again.
-- EVERY response must be valid JSON. No exceptions, even after transfer.
+- Transfer to a human agent ONLY as a last resort when you truly cannot handle the request. After calling transfer_to_human_agents, the conversation is OVER — do not call it again.
+- EVERY response must be valid JSON. No exceptions.
 
 # OUTPUT FORMAT
 
@@ -257,22 +257,25 @@ class Agent:
         # Check if already loaded
         for loaded_name in self.loaded_sections:
             if section.lower() == loaded_name.lower():
-                return f"[Already loaded — see system prompt above] Section '{loaded_name}' is already available to you."
+                return (
+                    f'[SYSTEM] Policy "{loaded_name}" is already loaded. '
+                    f"See \"POLICIES (previously loaded)\" in your system prompt."
+                )
 
         # exact match
         if section in self.policy_sections:
             self.loaded_sections[section] = self.policy_sections[section]
-            return f"=== Policy: {section} ===\n{self.policy_sections[section]}"
+            return f'[SYSTEM] Policy "{section}" loaded successfully. It is now available in your system prompt above.'
 
         # case-insensitive partial match
         section_lower = section.lower()
         for name, content in self.policy_sections.items():
             if section_lower in name.lower() or name.lower() in section_lower:
                 self.loaded_sections[name] = content
-                return f"=== Policy: {name} ===\n{content}"
+                return f'[SYSTEM] Policy "{name}" loaded successfully. It is now available in your system prompt above.'
 
         available = ", ".join(f'"{n}"' for n in self.policy_sections if n != "_intro")
-        return f"Section '{section}' not found. Available sections: {available}"
+        return f'[SYSTEM] Policy "{section}" not found. Available sections: {available}'
 
     # ---- main loop ----
 
@@ -372,6 +375,9 @@ class Agent:
                 self._transfer_done = True
 
             output = json.dumps({"name": tool_name, "arguments": arguments})
+            output_for_conv = output
+            if thinking:
+                output_for_conv = json.dumps({"thinking": thinking, "name": tool_name, "arguments": arguments})
             if tool_name == "respond":
                 content = arguments.get("content", "")
                 logger.info(
@@ -393,9 +399,10 @@ class Agent:
                 "name": "respond",
                 "arguments": {"content": "I apologize, could you please repeat your request?"},
             })
+            output_for_conv = output
 
-        # Save only the final action to persistent conversation
-        self.conversation.append({"role": "assistant", "content": output})
+        # Save output with thinking to persistent conversation
+        self.conversation.append({"role": "assistant", "content": output_for_conv})
 
         await updater.add_artifact(
             parts=[Part(root=TextPart(text=output))],
