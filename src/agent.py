@@ -154,7 +154,7 @@ You are a customer service agent. Follow the policies strictly.
 
 {on_demand_list}
 
-# AVAILABLE TOOLS
+{loaded_policies_block}# AVAILABLE TOOLS
 
 Domain tools you can call (one per turn):
 {tools_json}
@@ -203,9 +203,10 @@ class Agent:
     def __init__(self):
         self.messenger = Messenger()
         self.llm = LLMClient()
-        self.system_prompt: str = ""
+        self._base_system_prompt: str = ""
         self.conversation: list[dict] = []  # persistent across turns
         self.policy_sections: dict[str, str] = {}
+        self.loaded_sections: dict[str, str] = {}  # persisted across turns
         self._transfer_done: bool = False
 
     # ---- setup ----
@@ -234,21 +235,40 @@ class Agent:
             always_on_policy="\n\n".join(always_on_parts),
             on_demand_list=on_demand_list if on_demand_list else "(none)",
             tools_json=tools_json,
+            loaded_policies_block="{loaded_policies_block}",
         )
+
+    def _get_system_prompt(self) -> str:
+        """Return system prompt with any previously loaded policy sections injected."""
+        if not self.loaded_sections:
+            return self._base_system_prompt.replace("{loaded_policies_block}", "")
+
+        loaded_block = "# POLICIES (previously loaded — do NOT call lookup_policy for these again)\n\n"
+        for section_name, content in self.loaded_sections.items():
+            loaded_block += f"## {section_name}\n{content}\n\n"
+
+        return self._base_system_prompt.replace("{loaded_policies_block}", loaded_block)
 
     # ---- internal tools ----
 
     def _handle_lookup_policy(self, arguments: dict) -> str:
         section = arguments.get("section", "")
 
+        # Check if already loaded
+        for loaded_name in self.loaded_sections:
+            if section.lower() == loaded_name.lower():
+                return f"[Already loaded — see system prompt above] Section '{loaded_name}' is already available to you."
+
         # exact match
         if section in self.policy_sections:
+            self.loaded_sections[section] = self.policy_sections[section]
             return f"=== Policy: {section} ===\n{self.policy_sections[section]}"
 
         # case-insensitive partial match
         section_lower = section.lower()
         for name, content in self.policy_sections.items():
             if section_lower in name.lower() or name.lower() in section_lower:
+                self.loaded_sections[name] = content
                 return f"=== Policy: {name} ===\n{content}"
 
         available = ", ".join(f'"{n}"' for n in self.policy_sections if n != "_intro")
@@ -266,7 +286,7 @@ class Agent:
         # First message: parse instructions and build system prompt
         if not self.conversation:
             instructions, user_text = input_text.split(MESSAGES_DELIMITER, 1)
-            self.system_prompt = self._build_system_prompt(instructions)
+            self._base_system_prompt = self._build_system_prompt(instructions)
             input_text = user_text.strip()
 
         # If transfer was already called, auto-respond without LLM
@@ -302,7 +322,7 @@ class Agent:
         for step in range(MAX_INTERNAL_STEPS):
             response_text = await self.llm.call(
                 messages=[
-                    {"role": "system", "content": self.system_prompt},
+                    {"role": "system", "content": self._get_system_prompt()},
                     *working_messages,
                 ],
             )
