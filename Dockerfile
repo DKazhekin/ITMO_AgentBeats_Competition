@@ -1,5 +1,7 @@
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm
 
+LABEL org.opencontainers.image.source=https://github.com/DKazhekin/ITMO_AgentBeats_Competition
+
 RUN adduser agent
 USER agent
 WORKDIR /home/agent

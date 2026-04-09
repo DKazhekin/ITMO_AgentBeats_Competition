@@ -1,0 +1,9 @@
+.git
+.github
+.venv
+.claude
+__pycache__
+*.log
+*.pyc
+tests
+amber-manifest.json5

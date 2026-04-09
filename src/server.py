@@ -1,5 +1,20 @@
 import argparse
+import logging
 import uvicorn
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+# Silence noisy loggers
+for _noisy in ("httpx", "httpcore", "litellm", "openai", "LiteLLM",
+               "LiteLLM Proxy", "LiteLLM Router", "uvicorn.access"):
+    logging.getLogger(_noisy).setLevel(logging.ERROR)
+
+# Suppress litellm's print-based spam
+import litellm
+litellm.suppress_debug_info = True
 
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -19,21 +34,18 @@ def main():
     parser.add_argument("--port", type=int, default=9009, help="Port to bind the server")
     parser.add_argument("--card-url", type=str, help="URL to advertise in the agent card")
     args = parser.parse_args()
-
-    # Fill in your agent card
-    # See: https://a2a-protocol.org/latest/tutorials/python/3-agent-skills-and-card/
     
     skill = AgentSkill(
-        id="",
-        name="",
-        description="",
-        tags=[],
-        examples=[]
+        id="customer-service",
+        name="Customer Service Agent",
+        description="Handles customer service tasks across airline, retail, and telecom domains using tools and policies",
+        tags=["customer-service", "tool-use"],
+        examples=["Help me cancel my reservation", "I need to change my flight"],
     )
 
     agent_card = AgentCard(
-        name="",
-        description="",
+        name="Customer Service Agent",
+        description="Customer service agent that handles tasks across airline, retail, and telecom domains using tools and policies",
         url=args.card_url or f"http://{args.host}:{args.port}/",
         version='1.0.0',
         default_input_modes=['text'],
@@ -50,7 +62,7 @@ def main():
         agent_card=agent_card,
         http_handler=request_handler,
     )
-    uvicorn.run(server.build(), host=args.host, port=args.port)
+    uvicorn.run(server.build(), host=args.host, port=args.port, access_log=False)
 
 
 if __name__ == '__main__':
