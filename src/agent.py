@@ -174,15 +174,15 @@ Internal tool (invisible to user — use to review policy before acting):
 Rules:
 - Before calling any tool, check if the answer is already in the conversation or loaded policies. Do NOT repeat calls for information you already have.
 - Read-only tools (get_*, list_*, search_*, find_*, calculate*) are safe — call directly without lookup_policy.
-- BE ACTION-ORIENTED: When you have all required information and policy conditions are met — EXECUTE the action. Do NOT just describe what you could do.
-- When the user's intent is clear (e.g. "cancel my reservation"), treat that as confirmation. Only ask for extra confirmation if the policy requires it.
-- When a user has multiple reservations and describes one by route/date, ask for the reservation ID instead of iterating through all reservations one by one.
+- BE ACTION-ORIENTED: When you have all required information and policy conditions are met — EXECUTE the action immediately. Do NOT ask "shall I proceed?" or "would you like me to?" — just do it. The user's original request IS the confirmation unless the policy explicitly requires additional confirmation.
+- When the user describes a reservation by route, date, or other details — do NOT call get_reservation_details for each reservation one by one. Instead, first retrieve the full reservation list (e.g. via get_user_details), identify matching reservation(s), and then work with the specific ID(s).
 - Follow policies strictly. Never make exceptions even if the user insists.
 - Only use tools listed above. Do not invent tool names.
 - One tool call per turn. Never combine a tool call with a user response.
-- Transfer to a human agent ONLY as a last resort when you truly cannot handle the request. After calling transfer_to_human_agents, the conversation is OVER — do not call it again.
+- Transfer to a human agent ONLY when: (1) the policy explicitly requires transfer for this situation, OR (2) you have exhausted ALL available tools and NONE can resolve the request. Before transferring, verify in your thinking: "Have I checked all available tools? Is there really no tool that handles this?"
+- After calling transfer_to_human_agents, respond to any further messages with a brief acknowledgment that the user has been transferred. Do not call any more tools.
 - When processing multiple reservations, first retrieve all needed data, then summarize and analyze all findings together in your thinking before making decisions.
-- When calculating prices, refunds, or totals, use the calculate tool instead of doing mental math.
+- ALWAYS use the calculate tool for ANY arithmetic: totals, refunds, price differences, per-person vs. total costs, date differences. Never do mental math. When calculating costs for multiple passengers, always multiply by the number of passengers.
 - EVERY response must be valid JSON. No exceptions.
 
 # OUTPUT FORMAT
@@ -209,7 +209,7 @@ class Agent:
         self.conversation: list[dict] = []  # persistent across turns
         self.policy_sections: dict[str, str] = {}
         self.loaded_sections: dict[str, str] = {}  # persisted across turns
-        self._transfer_done: bool = False
+        self._transfer_done: bool = False  # tracks if transfer was called (for logging)
 
     # ---- setup ----
 
@@ -293,23 +293,6 @@ class Agent:
             instructions, user_text = input_text.split(MESSAGES_DELIMITER, 1)
             self._base_system_prompt = self._build_system_prompt(instructions)
             input_text = user_text.strip()
-
-        # If transfer was already called, auto-respond without LLM
-        if self._transfer_done:
-            logger.info(
-                "%s══════ Turn (post-transfer, auto) ══════%s", _CYAN, _RESET
-            )
-            output = json.dumps({
-                "name": "respond",
-                "arguments": {"content": "You have been transferred to a human agent who will assist you further."},
-            })
-            self.conversation.append({"role": "user", "content": input_text})
-            self.conversation.append({"role": "assistant", "content": output})
-            await updater.add_artifact(
-                parts=[Part(root=TextPart(text=output))],
-                name="Response",
-            )
-            return
 
         self.conversation.append({"role": "user", "content": input_text})
         self._turn_count = getattr(self, "_turn_count", 0) + 1

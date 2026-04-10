@@ -7,8 +7,8 @@ from litellm.exceptions import RateLimitError, BadRequestError
 logger = logging.getLogger(__name__)
 
 MODELS = [
-    "openrouter/anthropic/claude-sonnet-4",
-    "openrouter/google/gemini-2.5-flash",
+    "openrouter/openai/gpt-4.1",
+    "openrouter/openai/gpt-4.1-mini",
 ]
 
 
@@ -37,3 +37,10 @@ class LLMClient:
                     logger.warning("Model %s failed: %s", model, str(e)[:150])
             logger.info("All models rate-limited, waiting 10s...")
             await asyncio.sleep(10)
+
+# {
+#   "domain": "airline",
+#   "user_llm": "gemini/gemini-2.5-flash-lite",
+#   "num_tasks": 50,
+#   "max_steps": 200
+# }
