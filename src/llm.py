@@ -7,8 +7,8 @@ from litellm.exceptions import RateLimitError, BadRequestError
 logger = logging.getLogger(__name__)
 
 MODELS = [
-    "openrouter/openai/o3",
     "openrouter/openai/gpt-4.1",
+    "openrouter/openai/gpt-4.1-mini",
 ]
 
 
@@ -21,6 +21,7 @@ class LLMClient:
     async def call(
         self,
         messages: list[dict],
+        temperature: float = 0.0,
     ) -> str:
         while True:
             for model in self.models:
@@ -28,6 +29,7 @@ class LLMClient:
                     response = await acompletion(
                         model=model,
                         messages=messages,
+                        temperature=temperature,
                     )
                     logger.debug("LLM responded: model=%s", model)
                     return response.choices[0].message.content
