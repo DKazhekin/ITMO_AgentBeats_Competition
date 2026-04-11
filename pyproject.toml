@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn>=0.38.0",
     "litellm>=1.50.0",
     "tenacity>=9.1.4",
+    "jsonpatch>=1.32",
 ]
 
 [project.optional-dependencies]

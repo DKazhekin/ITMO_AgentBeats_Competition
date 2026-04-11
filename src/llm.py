@@ -22,19 +22,23 @@ class LLMClient:
         self,
         messages: list[dict],
         temperature: float = 0.0,
+        response_format: dict | None = None,
     ) -> str:
         while True:
             for model in self.models:
                 try:
-                    response = await acompletion(
+                    kwargs = dict(
                         model=model,
                         messages=messages,
                         temperature=temperature,
                     )
+                    if response_format is not None:
+                        kwargs["response_format"] = response_format
+                    response = await acompletion(**kwargs)
                     logger.debug("LLM responded: model=%s", model)
                     return response.choices[0].message.content
                 except (RateLimitError, BadRequestError) as e:
-                    logger.warning("Model %s failed: %s", model, str(e)[:150])
+                    logger.warning("Model %s failed: %s", model, str(e)[:500])
             logger.info("All models rate-limited, waiting 10s...")
             await asyncio.sleep(10)
 
